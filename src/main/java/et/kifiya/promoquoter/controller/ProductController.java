@@ -40,25 +40,6 @@ public class ProductController {
         return ResponseEntity.ok(product);
     }
 
-//    @GetMapping("/category/{category}")
-//    public ResponseEntity<List<ProductResponse>> getProductsByCategory(@PathVariable String category) {
-//        List<ProductResponse> products = productService.getProductsByCategory(category);
-//        return ResponseEntity.ok(products);
-//    }
-//
-//    @GetMapping("/stock/low")
-//    public ResponseEntity<List<ProductResponse>> getLowStockProducts(
-//            @RequestParam(defaultValue = "10") Integer threshold) {
-//        List<ProductResponse> products = productService.getLowStockProducts(threshold);
-//        return ResponseEntity.ok(products);
-//    }
-//
-//    @GetMapping("/stock/out")
-//    public ResponseEntity<List<ProductResponse>> getOutOfStockProducts() {
-//        List<ProductResponse> products = productService.getOutOfStockProducts();
-//        return ResponseEntity.ok(products);
-//    }
-
     @PutMapping("/{id}/stock")
     public ResponseEntity<Product> updateProductStock(
             @PathVariable UUID id,

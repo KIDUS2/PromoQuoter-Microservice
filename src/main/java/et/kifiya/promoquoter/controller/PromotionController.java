@@ -52,34 +52,4 @@ public class PromotionController {
         List<Promotion> promotions = promotionService.getPromotionsByType(type);
         return ResponseEntity.ok(promotions);
     }
-
-//    @GetMapping("/category/{category}")
-//    public ResponseEntity<List<PromotionResponseDto>> getPromotionsByCategory(@PathVariable String category) {
-//        List<PromotionResponseDto> promotions = promotionService.getActivePromotionsByCategory(category);
-//        return ResponseEntity.ok(promotions);
-//    }
-//
-//    @GetMapping("/product/{productId}")
-//    public ResponseEntity<List<PromotionResponseDto>> getPromotionsForProduct(@PathVariable UUID productId) {
-//        List<PromotionResponseDto> promotions = promotionService.getActivePromotionsForProduct(productId);
-//        return ResponseEntity.ok(promotions);
-//    }
-//
-//    @PutMapping("/{id}/activate")
-//    public ResponseEntity<PromotionResponseDto> activatePromotion(@PathVariable UUID id) {
-//        PromotionResponseDto promotion = promotionService.activatePromotion(id);
-//        return ResponseEntity.ok(promotion);
-//    }
-//
-//    @PutMapping("/{id}/deactivate")
-//    public ResponseEntity<PromotionResponseDto> deactivatePromotion(@PathVariable UUID id) {
-//        PromotionResponseDto promotion = promotionService.deactivatePromotion(id);
-//        return ResponseEntity.ok(promotion);
-//    }
-//
-//    @DeleteMapping("/{id}")
-//    public ResponseEntity<Void> deletePromotion(@PathVariable UUID id) {
-//        promotionService.deletePromotion(id);
-//        return ResponseEntity.noContent().build();
-//    }
 }
