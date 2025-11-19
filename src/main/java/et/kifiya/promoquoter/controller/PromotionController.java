@@ -21,6 +21,7 @@ import java.util.UUID;
 public class PromotionController {
 
     private final PromotionService promotionService;
+
     @PostMapping
     public ResponseEntity<List<PromotionResponseDto>> createPromotions(
             @Valid @RequestBody List<PromotionRequestDto> promotionRequests) {

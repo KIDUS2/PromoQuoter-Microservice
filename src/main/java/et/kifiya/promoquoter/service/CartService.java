@@ -23,7 +23,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
@@ -40,53 +39,29 @@ public class CartService {
 
     @Transactional(readOnly = true)
     public CartResponseDto calculateQuote(CartRequest request) {
-        log.info("=== CALCULATE QUOTE STARTED ===");
-
-        // Validate and get products
         Map<String, Product> products = getProductsFromRequest(request);
-        log.info("Products found: {}", products.keySet());
-
         Map<String, Integer> cartItems = convertToCartItems(request);
-        log.info("Cart items: {}", cartItems);
-
-        // Calculate subtotal
         BigDecimal subtotal = calculateSubtotal(products, cartItems);
-        log.info("Subtotal: {}", subtotal);
-
-        // Apply promotions
         List<Promotion> activePromotions = promotionService.getActivePromotions();
-        log.info("Active promotions found: {}", activePromotions.size());
         activePromotions.forEach(promo -> log.info("Promotion: {} - {} - Active: {}",
                 promo.getName(), promo.getType(), promo.isActive()));
 
         PromotionService.PromotionContext context =
                 promotionService.applyPromotions(activePromotions, products, cartItems);
-        log.info("Total discount calculated: {}", context.getTotalDiscount());
-        log.info("Applied promotions count: {}", context.getAppliedPromotions().size());
-
-        // Build response
         CartResponseDto response = buildQuoteResponse(products, cartItems, subtotal, context);
-        log.info("=== CALCULATE QUOTE COMPLETED ===");
-
         return response;
     }
+
     @Transactional
     public CartConfirmResponse confirmCart(CartConfirmRequest request, String idempotencyKey) {
-        log.info("=== CART CONFIRMATION STARTED ===");
-        log.info("Idempotency Key: {}", idempotencyKey);
-        log.info("Cart items: {}", request.getItems());
-
-        // Check idempotency first
         if (idempotencyKey != null) {
             Optional<Order> existingOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
             if (existingOrder.isPresent()) {
-                log.info("Found existing order with idempotency key: {}", idempotencyKey);
                 return getOrderConfirmationResponse(existingOrder.get().getId());
             }
         }
 
         try {
-            // Validate stock availability with retry logic for optimistic locking
             return executeWithRetry(() -> processCartConfirmation(request, idempotencyKey));
         } catch (ObjectOptimisticLockingFailureException e) {
             log.error("Optimistic locking failure: {}", e.getMessage());
@@ -98,30 +73,17 @@ public class CartService {
     }
 
     private CartConfirmResponse processCartConfirmation(CartConfirmRequest request, String idempotencyKey) {
-        log.info("Processing cart confirmation...");
-
-        // Validate stock availability
         validateStockForAllItems(request.getItems());
-        log.info("Stock validation passed");
-
-        // Calculate quote
         CartRequest quoteRequest = new CartRequest();
         quoteRequest.setItems(request.getItems());
         quoteRequest.setCustomerSegment(request.getCustomerSegment());
         CartResponseDto quote = calculateQuote(quoteRequest);
-        log.info("Quote calculated successfully");
-
-        // Reserve inventory and create order
         Order order = createOrder(request, quote, idempotencyKey);
-        log.info("Order created successfully with ID: {}", order.getId());
-
         return buildConfirmResponse(order, quote);
     }
 
     private void validateStockForAllItems(List<CartItemRequest> items) {
-        log.info("Validating stock for {} items", items.size());
         for (CartItemRequest item : items) {
-            log.info("Validating product: {}, quantity: {}", item.getProductId(), item.getQty());
             productService.validateStockAvailability(
                     UUID.fromString(item.getProductId()),
                     item.getQty()
@@ -129,21 +91,6 @@ public class CartService {
         }
     }
 
-    private CartConfirmResponse processCartConfirmationss(CartConfirmRequest request, String idempotencyKey) {
-        // Validate stock availability
-        validateStockForAllItems(request.getItems());
-
-        // Calculate quote
-        CartRequest quoteRequest = new CartRequest();
-        quoteRequest.setItems(request.getItems());
-        quoteRequest.setCustomerSegment(request.getCustomerSegment());
-        CartResponseDto quote = calculateQuote(quoteRequest);
-
-        // Reserve inventory and create order
-        Order order = createOrder(request, quote, idempotencyKey);
-
-        return buildConfirmResponse(order, quote);
-    }
 
     private <T> T executeWithRetry(Callable<T> task) {
         int retryCount = 0;
@@ -157,7 +104,6 @@ public class CartService {
                 if (retryCount >= maxRetries) {
                     throw e;
                 }
-                // Wait before retry (exponential backoff)
                 try {
                     Thread.sleep(100 * retryCount);
                 } catch (InterruptedException ie) {
@@ -204,30 +150,14 @@ public class CartService {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-    private void validateStockForAllItemss(List<CartItemRequest> items) {
-        for (CartItemRequest item : items) {
-            productService.validateStockAvailability(
-                    UUID.fromString(item.getProductId()),
-                    item.getQty()
-            );
-        }
-    }
 
     private Order createOrder(CartConfirmRequest request, CartResponseDto quote, String idempotencyKey) {
-        log.info("Creating order with idempotency key: {}", idempotencyKey);
-
-        // Create order first without items
         Order order = new Order();
-        // Don't set ID manually - let the constructor handle it
         order.setCustomerSegment(request.getCustomerSegment().name());
         order.setSubtotal(quote.getSubtotal());
         order.setTotalDiscount(quote.getTotalDiscount());
         order.setTotal(quote.getTotal());
         order.setIdempotencyKey(idempotencyKey);
-
-        log.info("Order created with ID: {}", order.getId());
-
-        // Create order items
         List<OrderItem> orderItems = new ArrayList<>();
         for (CartItemRequest item : request.getItems()) {
             Product product = productService.getProductEntity(UUID.fromString(item.getProductId()));
@@ -239,17 +169,11 @@ public class CartService {
             orderItem.setLineTotal(product.getPrice().multiply(BigDecimal.valueOf(item.getQty())));
 
             orderItems.add(orderItem);
-
-            // Update stock - use a separate transactional method
             updateProductStock(product.getId(), -item.getQty());
         }
 
         order.setItems(orderItems);
-
-        // Save the order
         Order savedOrder = orderRepository.save(order);
-        log.info("Order saved successfully: {}", savedOrder.getId());
-
         return savedOrder;
     }
 
@@ -263,8 +187,8 @@ public class CartService {
         }
 
         product.setStock(newStock);
-        // This will be automatically saved due to @Transactional
     }
+
     private CartResponseDto buildQuoteResponse(Map<String, Product> products,
                                                Map<String, Integer> cartItems,
                                                BigDecimal subtotal,
@@ -290,8 +214,6 @@ public class CartService {
             Integer quantity = entry.getValue();
             BigDecimal unitPrice = product.getPrice();
             BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
-
-            // Calculate line item discount (simplified - would track per line in real implementation)
             BigDecimal lineDiscount = calculateLineItemDiscount(productId, quantity, context);
             BigDecimal finalPrice = lineTotal.subtract(lineDiscount).max(BigDecimal.ZERO);
 
@@ -312,8 +234,6 @@ public class CartService {
 
     private BigDecimal calculateLineItemDiscount(String productId, Integer quantity,
                                                  PromotionService.PromotionContext context) {
-        // Simplified implementation - in real scenario, track discounts per line item
-        // This would require more sophisticated discount allocation logic
         return BigDecimal.ZERO;
     }
 
@@ -336,10 +256,8 @@ public class CartService {
     }
 
     private CartConfirmResponse buildConfirmResponse(Order order, CartResponseDto quote) {
-        // Fix: Create CartItemDto objects instead of OrderItem entities for the response
         List<CartItemDto> orderItems = order.getItems().stream()
                 .map(item -> {
-                    // Fetch product details for the response
                     Product product = productService.getProductEntity(item.getProductId());
                     BigDecimal unitPrice = product.getPrice();
                     BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
@@ -351,8 +269,8 @@ public class CartService {
                             item.getQuantity(),
                             unitPrice,
                             lineTotal,
-                            BigDecimal.ZERO, // You might want to calculate actual discount per item
-                            lineTotal // finalPrice would be lineTotal - discount
+                            BigDecimal.ZERO,
+                            lineTotal
                     );
                 })
                 .collect(Collectors.toList());
@@ -362,10 +280,10 @@ public class CartService {
                         .map(ap -> new AppliedPromotion(
                                 ap.getPromotionId(),
                                 ap.getPromotionName(),
-                                ap.getType(), // Make sure this field exists in AppliedPromotion
+                                ap.getType(),
                                 ap.getDescription(),
                                 ap.getDiscountAmount(),
-                                ap.getOrder() // Make sure this field exists
+                                ap.getOrder()
                         ))
                         .collect(Collectors.toList()) : Collections.emptyList();
 
@@ -384,17 +302,11 @@ public class CartService {
     private CartConfirmResponse getOrderConfirmationResponse(UUID orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
-
-        // For existing orders, we need to reconstruct the quote or get it from order details
         CartResponseDto reconstructedQuote = reconstructQuoteFromOrder(order);
-
         return buildConfirmResponse(order, reconstructedQuote);
     }
 
     private CartResponseDto reconstructQuoteFromOrder(Order order) {
-        // Reconstruct the quote response from order data
-        // This is a simplified implementation - you might want to store quote details in the order
-
         List<CartItemDto> lineItems = order.getItems().stream()
                 .map(item -> {
                     Product product = productService.getProductEntity(item.getProductId());
@@ -405,13 +317,12 @@ public class CartService {
                             item.getQuantity(),
                             item.getUnitPrice(),
                             item.getLineTotal(),
-                            BigDecimal.ZERO, // Discount would need to be stored in order
+                            BigDecimal.ZERO,
                             item.getLineTotal()
                     );
                 })
                 .collect(Collectors.toList());
 
-        // Applied promotions would need to be stored in the order entity
         List<AppliedPromotion> appliedPromotions = Collections.emptyList();
 
         return new CartResponseDto(

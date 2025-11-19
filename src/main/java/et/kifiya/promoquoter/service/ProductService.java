@@ -95,39 +95,4 @@ public class ProductService {
         );
     }
 
-    @Transactional
-    public boolean updateStockWithOptimisticLock(UUID productId, Integer quantityChange) {
-        int maxRetries = 3;
-        int retryCount = 0;
-
-        while (retryCount < maxRetries) {
-            try {
-                Product product = productRepository.findById(productId)
-                        .orElseThrow(() -> new IllegalArgumentException("Product not found"));
-
-                int newStock = product.getStock() + quantityChange;
-                if (newStock < 0) {
-                    throw new IllegalStateException("Insufficient stock for product: " + productId);
-                }
-
-                product.setStock(newStock);
-                productRepository.save(product); // This will increment the version
-                return true;
-
-            } catch (ObjectOptimisticLockingFailureException e) {
-                retryCount++;
-                if (retryCount >= maxRetries) {
-                    throw new IllegalStateException("Unable to update stock due to concurrent access. Please try again.");
-                }
-                // Wait and retry
-                try {
-                    Thread.sleep(100 * retryCount);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Retry interrupted", ie);
-                }
-            }
-        }
-        return false;
-    }
 }

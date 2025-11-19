@@ -2,10 +2,10 @@ package et.kifiya.promoquoter.service;
 
 
 import et.kifiya.promoquoter.dto.ResponseDTO.PromotionResponseDto;
+import et.kifiya.promoquoter.dto.requestDTO.PromotionRequestDto;
 import et.kifiya.promoquoter.enums.PromotionType;
 import et.kifiya.promoquoter.model.Product;
 import et.kifiya.promoquoter.model.Promotion;
-import et.kifiya.promoquoter.dto.requestDTO.PromotionRequestDto;
 import et.kifiya.promoquoter.promotion.PromotionStrategy;
 import et.kifiya.promoquoter.repository.PromotionRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 public class PromotionService {
 
     private final PromotionRepository promotionRepository;
-    private  final  List<PromotionStrategy> strategies;
+    private final List<PromotionStrategy> strategies;
 
     public List<PromotionResponseDto> createPromotions(List<PromotionRequestDto> requests) {
         List<Promotion> promotions = requests.stream()
@@ -67,8 +67,6 @@ public class PromotionService {
     public PromotionContext applyPromotions(List<Promotion> promotions,
                                             Map<String, Product> products,
                                             Map<String, Integer> cartItems) {
-        log.info("=== APPLYING PROMOTIONS ===");
-        log.info("Available strategies: {}", strategies.size());
         strategies.forEach(strategy -> log.info("Strategy: {}", strategy.getClass().getSimpleName()));
 
         PromotionContext context = new PromotionContext(products, cartItems);
@@ -78,12 +76,7 @@ public class PromotionService {
                 .sorted(Comparator.comparing(Promotion::getPriority))
                 .collect(Collectors.toList());
 
-        log.info("Sorted active promotions to apply: {}", sortedPromotions.size());
-
         for (Promotion promotion : sortedPromotions) {
-            log.info("Processing promotion: {} (Type: {}, Priority: {})",
-                    promotion.getName(), promotion.getType(), promotion.getPriority());
-
             boolean strategyFound = false;
             for (PromotionStrategy strategy : strategies) {
                 if (strategy.supports(promotion)) {
@@ -110,22 +103,7 @@ public class PromotionService {
                         promotion.getName(), promotion.getType());
             }
         }
-
-        log.info("=== PROMOTIONS APPLIED - Total discount: {} ===", context.getTotalDiscount());
         return context;
-    }
-    private void applyPromotion(Promotion promotion, PromotionContext context) {
-        strategies.stream()
-                .filter(strategy -> strategy.supports(promotion))
-                .findFirst()
-                .ifPresent(strategy -> {
-                    PromotionStrategy.PromotionResult result =
-                            strategy.apply(promotion, context.getProducts(), context.getCartItems());
-
-                    if (result.getDiscount().compareTo(BigDecimal.ZERO) > 0) {
-                        context.addAppliedPromotion(promotion, result);
-                    }
-                });
     }
 
     private Promotion mapToPromotion(PromotionRequestDto request) {
@@ -174,11 +152,21 @@ public class PromotionService {
             appliedPromotions.add(new AppliedPromotion(promotion, result));
         }
 
-        // Getters
-        public Map<String, Product> getProducts() { return products; }
-        public Map<String, Integer> getCartItems() { return cartItems; }
-        public BigDecimal getTotalDiscount() { return totalDiscount; }
-        public List<AppliedPromotion> getAppliedPromotions() { return appliedPromotions; }
+        public Map<String, Product> getProducts() {
+            return products;
+        }
+
+        public Map<String, Integer> getCartItems() {
+            return cartItems;
+        }
+
+        public BigDecimal getTotalDiscount() {
+            return totalDiscount;
+        }
+
+        public List<AppliedPromotion> getAppliedPromotions() {
+            return appliedPromotions;
+        }
     }
 
     public static class AppliedPromotion {
@@ -190,8 +178,12 @@ public class PromotionService {
             this.result = result;
         }
 
-        // Getters
-        public Promotion getPromotion() { return promotion; }
-        public PromotionStrategy.PromotionResult getResult() { return result; }
+        public Promotion getPromotion() {
+            return promotion;
+        }
+
+        public PromotionStrategy.PromotionResult getResult() {
+            return result;
+        }
     }
 }

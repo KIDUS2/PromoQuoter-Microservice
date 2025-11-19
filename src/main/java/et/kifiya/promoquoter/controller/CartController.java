@@ -2,24 +2,21 @@ package et.kifiya.promoquoter.controller;
 
 
 import et.kifiya.promoquoter.dto.CartRequest;
-import et.kifiya.promoquoter.dto.OrderResponse;
-import et.kifiya.promoquoter.dto.QuoteResponse;
 import et.kifiya.promoquoter.dto.ResponseDTO.CartConfirmResponse;
 import et.kifiya.promoquoter.dto.ResponseDTO.CartResponseDto;
 import et.kifiya.promoquoter.dto.requestDTO.CartConfirmRequest;
 import et.kifiya.promoquoter.service.CartService;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/cart")
+@RequiredArgsConstructor
 public class CartController {
     private final CartService cartService;
 
-    public CartController(CartService cartService) {
-        this.cartService = cartService;
-    }
     @PostMapping("/quote")
     public ResponseEntity<CartResponseDto> calculateQuote(@Valid @RequestBody CartRequest request) {
         CartResponseDto response = cartService.calculateQuote(request);
