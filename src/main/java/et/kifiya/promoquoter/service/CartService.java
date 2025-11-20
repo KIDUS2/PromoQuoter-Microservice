@@ -8,6 +8,7 @@ import et.kifiya.promoquoter.dto.ResponseDTO.CartItemDto;
 import et.kifiya.promoquoter.dto.ResponseDTO.CartResponseDto;
 import et.kifiya.promoquoter.dto.requestDTO.CartConfirmRequest;
 import et.kifiya.promoquoter.dto.requestDTO.CartItemRequest;
+import et.kifiya.promoquoter.exception.OutOfStockException;
 import et.kifiya.promoquoter.model.Order;
 import et.kifiya.promoquoter.model.OrderItem;
 import et.kifiya.promoquoter.model.Product;
@@ -54,21 +55,24 @@ public class CartService {
 
     @Transactional
     public CartConfirmResponse confirmCart(CartConfirmRequest request, String idempotencyKey) {
-        if (idempotencyKey != null) {
-            Optional<Order> existingOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
-            if (existingOrder.isPresent()) {
-                return getOrderConfirmationResponse(existingOrder.get().getId());
-            }
+        Optional<Order> existingOrder = orderRepository.findByIdempotencyKey(idempotencyKey);
+        if (existingOrder.isPresent()) {
+            return getOrderConfirmationResponse(existingOrder.get().getId());
         }
 
         try {
             return executeWithRetry(() -> processCartConfirmation(request, idempotencyKey));
         } catch (ObjectOptimisticLockingFailureException e) {
-            log.error("Optimistic locking failure: {}", e.getMessage());
-            throw new IllegalStateException("Unable to process order due to concurrent modification. Please try again.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"Unable to process order due to concurrent modification. Please try again.");
+        } catch (OutOfStockException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        } catch (IllegalStateException e) {
+            if (e.getMessage() != null && e.getMessage().contains("Insufficient stock")) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+            }
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error processing order");
         } catch (Exception e) {
-            log.error("Error processing cart confirmation: {}", e.getMessage(), e);
-            throw new RuntimeException("Error processing cart confirmation: " + e.getMessage(), e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error processing cart confirmation");
         }
     }
 
@@ -78,8 +82,13 @@ public class CartService {
         quoteRequest.setItems(request.getItems());
         quoteRequest.setCustomerSegment(request.getCustomerSegment());
         CartResponseDto quote = calculateQuote(quoteRequest);
+        Optional<Order> lastMinuteCheck = orderRepository.findWithLockingByIdempotencyKey(idempotencyKey);
+        if (lastMinuteCheck.isPresent()) {
+            return getOrderConfirmationResponse(lastMinuteCheck.get().getId());
+        }
+
         Order order = createOrder(request, quote, idempotencyKey);
-        return buildConfirmResponse(order, quote);
+        return buildConfirmResponse(order, quote, "NEW");
     }
 
     private void validateStockForAllItems(List<CartItemRequest> items) {
@@ -101,9 +110,12 @@ public class CartService {
                 return task.call();
             } catch (ObjectOptimisticLockingFailureException e) {
                 retryCount++;
+                log.warn("Optimistic lock failure - attempt {}/{}", retryCount, maxRetries);
+
                 if (retryCount >= maxRetries) {
                     throw e;
                 }
+
                 try {
                     Thread.sleep(100 * retryCount);
                 } catch (InterruptedException ie) {
@@ -111,7 +123,10 @@ public class CartService {
                     throw new RuntimeException("Retry interrupted", ie);
                 }
             } catch (Exception e) {
-                throw new RuntimeException("Error processing cart confirmation", e);
+                if (e instanceof RuntimeException) {
+                    throw (RuntimeException) e;
+                }
+                throw new RuntimeException(e);
             }
         }
         throw new RuntimeException("Max retries exceeded");
@@ -150,7 +165,6 @@ public class CartService {
                 .setScale(2, RoundingMode.HALF_UP);
     }
 
-
     private Order createOrder(CartConfirmRequest request, CartResponseDto quote, String idempotencyKey) {
         Order order = new Order();
         order.setCustomerSegment(request.getCustomerSegment().name());
@@ -158,22 +172,25 @@ public class CartService {
         order.setTotalDiscount(quote.getTotalDiscount());
         order.setTotal(quote.getTotal());
         order.setIdempotencyKey(idempotencyKey);
-        List<OrderItem> orderItems = new ArrayList<>();
-        for (CartItemRequest item : request.getItems()) {
-            Product product = productService.getProductEntity(UUID.fromString(item.getProductId()));
+        List<OrderItem> orderItems = request.getItems().stream()
+                .map(item -> {
+                    Product product = productService.getProductEntity(UUID.fromString(item.getProductId()));
 
-            OrderItem orderItem = new OrderItem();
-            orderItem.setProductId(UUID.fromString(item.getProductId()));
-            orderItem.setQuantity(item.getQty());
-            orderItem.setUnitPrice(product.getPrice());
-            orderItem.setLineTotal(product.getPrice().multiply(BigDecimal.valueOf(item.getQty())));
-
-            orderItems.add(orderItem);
-            updateProductStock(product.getId(), -item.getQty());
-        }
+                    OrderItem orderItem = new OrderItem();
+                    orderItem.setProductId(UUID.fromString(item.getProductId()));
+                    orderItem.setQuantity(item.getQty());
+                    orderItem.setUnitPrice(product.getPrice());
+                    orderItem.setLineTotal(product.getPrice().multiply(BigDecimal.valueOf(item.getQty())));
+                    return orderItem;
+                })
+                .collect(Collectors.toList());
 
         order.setItems(orderItems);
         Order savedOrder = orderRepository.save(order);
+        for (CartItemRequest item : request.getItems()) {
+            updateProductStock(UUID.fromString(item.getProductId()), -item.getQty());
+        }
+
         return savedOrder;
     }
 
@@ -255,7 +272,7 @@ public class CartService {
         return appliedPromotions;
     }
 
-    private CartConfirmResponse buildConfirmResponse(Order order, CartResponseDto quote) {
+    private CartConfirmResponse buildConfirmResponse(Order order, CartResponseDto quote, String request) {
         List<CartItemDto> orderItems = order.getItems().stream()
                 .map(item -> {
                     Product product = productService.getProductEntity(item.getProductId());
@@ -295,7 +312,8 @@ public class CartService {
                 order.getSubtotal(),
                 order.getTotalDiscount(),
                 order.getTotal(),
-                appliedPromotions
+                appliedPromotions,
+                request
         );
     }
 
@@ -303,7 +321,7 @@ public class CartService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found"));
         CartResponseDto reconstructedQuote = reconstructQuoteFromOrder(order);
-        return buildConfirmResponse(order, reconstructedQuote);
+        return buildConfirmResponse(order, reconstructedQuote, "Duplicated");
     }
 
     private CartResponseDto reconstructQuoteFromOrder(Order order) {

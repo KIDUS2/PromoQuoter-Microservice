@@ -81,18 +81,13 @@ public class PromotionService {
             for (PromotionStrategy strategy : strategies) {
                 if (strategy.supports(promotion)) {
                     strategyFound = true;
-                    log.info("Found supporting strategy: {} for promotion: {}",
-                            strategy.getClass().getSimpleName(), promotion.getName());
 
                     PromotionStrategy.PromotionResult result =
                             strategy.apply(promotion, context.getProducts(), context.getCartItems());
 
-                    log.info("Strategy result - Discount: {}, Description: {}",
-                            result.getDiscount(), result.getDescription());
 
                     if (result.getDiscount().compareTo(BigDecimal.ZERO) > 0) {
                         context.addAppliedPromotion(promotion, result);
-                        log.info("Added applied promotion with discount: {}", result.getDiscount());
                     }
                     break;
                 }

@@ -1,6 +1,7 @@
 package et.kifiya.promoquoter.service;
 
 import et.kifiya.promoquoter.dto.ResponseDTO.ProductResponse;
+import et.kifiya.promoquoter.exception.OutOfStockException;
 import et.kifiya.promoquoter.model.Product;
 import et.kifiya.promoquoter.dto.requestDTO.ProductRequestDto;
 import et.kifiya.promoquoter.repository.ProductRepository;
@@ -70,12 +71,24 @@ public class ProductService {
     public void validateStockAvailability(UUID productId, Integer requestedQuantity) {
         Product product = getProductEntity(productId);
         if (product.getStock() < requestedQuantity) {
-            throw new IllegalStateException(
+            throw new OutOfStockException(
                     String.format("Insufficient stock for product %s. Requested: %d, Available: %d",
                             productId, requestedQuantity, product.getStock()));
         }
     }
+    @Transactional
+    public void updateProductStock(UUID productId, Integer quantityChange) {
+        Product product = getProductEntity(productId);
+        int newStock = product.getStock() + quantityChange;
 
+        if (newStock < 0) {
+            throw new OutOfStockException(
+                    String.format("Insufficient stock for product %s. Requested: %d, Available: %d",
+                            productId, quantityChange, product.getStock()));
+        }
+
+        product.setStock(newStock);
+    }
     private Product mapToProduct(ProductRequestDto request) {
         Product product = new Product();
         product.setName(request.getName());

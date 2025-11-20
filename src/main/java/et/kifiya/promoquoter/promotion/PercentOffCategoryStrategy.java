@@ -1,18 +1,16 @@
 package et.kifiya.promoquoter.promotion;
 
 
-
 import et.kifiya.promoquoter.enums.PromotionType;
-import et.kifiya.promoquoter.model.*;
+import et.kifiya.promoquoter.model.Product;
+import et.kifiya.promoquoter.model.Promotion;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+
 @Component
 @Slf4j
 public class PercentOffCategoryStrategy implements PromotionStrategy {
@@ -25,16 +23,12 @@ public class PercentOffCategoryStrategy implements PromotionStrategy {
                 && promotion.getCategory() != null
                 && promotion.getDiscountPercent() != null
                 && promotion.getDiscountPercent().compareTo(BigDecimal.ZERO) > 0;
-
-        log.info("PercentOffCategoryStrategy.supports({}) = {}", promotion.getName(), supports);
         return supports;
     }
 
     @Override
     public PromotionResult apply(Promotion promotion, Map<String, Product> products,
                                  Map<String, Integer> cartItems) {
-        log.info("Applying PercentOffCategoryStrategy for promotion: {}", promotion.getName());
-
         BigDecimal totalDiscount = BigDecimal.ZERO;
         StringBuilder description = new StringBuilder();
         int affectedItems = 0;
@@ -62,8 +56,6 @@ public class PercentOffCategoryStrategy implements PromotionStrategy {
             description.append(String.format(" (applied to %d items)", affectedItems));
         }
 
-        log.info("PercentOffCategoryStrategy result - Discount: {}, Description: {}",
-                totalDiscount, description.toString());
 
         return new PromotionResult(totalDiscount, description.toString());
     }

@@ -21,5 +21,7 @@ public class CartConfirmResponse {
     private BigDecimal totalDiscount;
     private BigDecimal total;
     private List<AppliedPromotion> appliedPromotions;
+    private String requestType="NEW";
+
 
 }

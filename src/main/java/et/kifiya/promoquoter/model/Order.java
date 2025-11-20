@@ -22,10 +22,16 @@ public class Order {
     private BigDecimal subtotal;
     private BigDecimal totalDiscount;
     private BigDecimal total;
-
+    @Version
+    private Long version;
     @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id")
     private List<OrderItem> items;
     @Column(name = "idempotency_key")
     private String idempotencyKey;
+
+    public Order() {
+        this.orderDate = LocalDateTime.now();
+        this.status = "CONFIRMED";
+    }
 }
